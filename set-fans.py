@@ -9,7 +9,7 @@ verbosity = 1
 
 system_thresholds = {
     'cold': 35,
-    'warm': 40,
+    'warm': 35,
     'hot': 45,
 }
 
@@ -63,26 +63,28 @@ while True:
     elif (temperatures['System'] < system_thresholds['warm']
         and temperatures['CPU'] < cpu_thresholds['warm']
         and temperatures['GPU'] < gpu_thresholds['warm']
-        and state != 'low'):
+        and state != 'medium'):
         set_fans([1,2,3], 0)
         set_fans([4,5], 50)
         state = 'medium'
     # If anyone gets above warm, go to medium state
-    elif (temperatures['System'] > system_thresholds['warm']
+    elif ((temperatures['System'] > system_thresholds['warm']
         or temperatures['CPU'] > cpu_thresholds['warm']
-        or temperatures['GPU'] > gpu_thresholds['warm']
+        or temperatures['GPU'] > gpu_thresholds['warm'])
         and state != 'medium'):
         set_fans([1,2,3], 75)
         set_fans([4,5], 50)
         state = 'medium'
     # If anyone gets above hot, go to high state
-    elif (temperatures['System'] > system_thresholds['hot']
+    elif ((temperatures['System'] > system_thresholds['hot']
         or temperatures['CPU'] > cpu_thresholds['hot']
-        or temperatures['GPU'] > gpu_thresholds['hot']
+        or temperatures['GPU'] > gpu_thresholds['hot'])
         and state != 'high'):
         set_fans([1,2,3], 100)
         set_fans([4,5], 100)
         state = 'high'
 
+    if verbosity > 0:
+        print state
     # Snooze
     time.sleep(check_interval)
