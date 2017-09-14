@@ -1,9 +1,13 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
+
 import subprocess
 import time
+import psutil
+import sys
 
 gridfan = '/usr/local/bin/gridfan'
-check_interval = 60
+check_interval = 5
+previous_state = ''
 state = 'low'
 verbosity = 1
 
@@ -20,71 +24,76 @@ cpu_thresholds = {
 }
 
 gpu_thresholds = {
-    'cold': 30,
-    'warm': 35,
-    'hot': 40,
+    'cold': 45,
+    'warm': 50,
+    'hot': 60,
 }
 
 def set_fans(fans, speed):
     cmd = gridfan + " set fans " + ' '.join(map(str,fans)) + " speed " + str(speed)
-    subprocess.call(cmd, shell=True)
-    #print [gridfan, 'set', 'fans', fans, 'speed', speed]
+    try:
+        subprocess.call(cmd, shell=True)
+        return True
+    except (OSError, ValueError, CalledProcessError, TimeoutExpired, SubprocessError) as err:
+        print('Error while trying to set fans', err)
+        return False
+    #print([gridfan, 'set', 'fans', fans, 'speed', speed])
+    #sys.stdout.flush() #systemd journal
 
 def check_temps():
-    global temperatures
-    output = subprocess.check_output(['sensors', '-u']);
-    sensors = {}
-    for item in output.split("\n"):
-        sensor = item.strip().split(":")
-        if len(sensor) > 1:
-            if sensor[1] != '':
-                sensors[sensor[0]] = sensor[1].strip()
-    output = subprocess.check_output('nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits', shell=True)
+    global temperatures    # If anyone gets above hot, go to high state
     temperatures = {
-        'System': float(sensors['temp1_input']),
-        'CPU': float(sensors['temp2_input']),
-        'GPU': float(output),
+        'System': 30, #kernel lacking support for new ryzen chipset
+        'CPU': 30,
+        'GPU': float(psutil.sensors_temperatures()['amdgpu'][0].current),
     }
-    if verbosity > 0:
-        print temperatures
+    print(temperatures)
+    sys.stdout.flush() #systemd journal
+
+subprocess.call(gridfan + " init", shell=True)
 
 while True:
     check_temps()
 
-    # If everybody has cooled down, go to the low state
-    if (temperatures['System'] < system_thresholds['cold']
-        and temperatures['CPU'] < cpu_thresholds['cold']
-        and temperatures['GPU'] < gpu_thresholds['cold']
-        and state != 'low'):
-        set_fans([1,2,3], 0)
-        set_fans([4,5], 50)
-        state = 'low'
-    # If everybody has cooled down to warm, go to the medium state
-    elif (temperatures['System'] < system_thresholds['warm']
-        and temperatures['CPU'] < cpu_thresholds['warm']
-        and temperatures['GPU'] < gpu_thresholds['warm']
-        and state != 'medium'):
-        set_fans([1,2,3], 0)
-        set_fans([4,5], 50)
-        state = 'medium'
-    # If anyone gets above warm, go to medium state
-    elif ((temperatures['System'] > system_thresholds['warm']
-        or temperatures['CPU'] > cpu_thresholds['warm']
-        or temperatures['GPU'] > gpu_thresholds['warm'])
-        and state != 'medium'):
-        set_fans([1,2,3], 75)
-        set_fans([4,5], 50)
-        state = 'medium'
-    # If anyone gets above hot, go to high state
-    elif ((temperatures['System'] > system_thresholds['hot']
-        or temperatures['CPU'] > cpu_thresholds['hot']
-        or temperatures['GPU'] > gpu_thresholds['hot'])
-        and state != 'high'):
-        set_fans([1,2,3], 100)
-        set_fans([4,5], 100)
-        state = 'high'
+    r1 = False
+    r2 = False
 
-    if verbosity > 0:
-        print state
+    # Determine state
+    if (temperatures['System'] > system_thresholds['hot']
+        or temperatures['CPU'] > cpu_thresholds['hot']
+        or temperatures['GPU'] > gpu_thresholds['hot']):
+        state = 'high'
+    elif (temperatures['System'] > system_thresholds['warm']
+        or temperatures['CPU'] > cpu_thresholds['warm']
+        or temperatures['GPU'] > gpu_thresholds['warm']):
+        state = 'medium'
+    elif (temperatures['System'] < system_thresholds['cold']
+        and temperatures['CPU'] < cpu_thresholds['cold']
+        and temperatures['GPU'] < gpu_thresholds['cold']):
+        state = 'low'
+
+    # Attempt set fan if required
+    if (previous_state != state):
+        print(state)
+        sys.stdout.flush() #systemd journal
+        if (state == 'high'):
+            r1 = set_fans([1,2,3,4,5,6], 80)
+            r2 = True
+        elif (state == 'medium'):
+            r1 = set_fans([2,3,5], 40)
+            r2 = set_fans([1,4,6], 60)
+        elif (state == 'low'):
+            r1 = set_fans([2,3,5], 0)
+            r2 = set_fans([1,4,6], 40)
+
+        if (r1 & r2):
+            previous_state = state
+        else:
+            try:
+                subprocess.call(gridfan + " init", shell=True)
+            except (OSError, ValueError, CalledProcessError, TimeoutExpired, SubprocessError) as err:
+                print('Error while trying to init fans', err)
+                sys.stdout.flush() #systemd journal
+
     # Snooze
     time.sleep(check_interval)
