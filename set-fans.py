@@ -12,15 +12,15 @@ state = 'low'
 verbosity = 1
 
 system_thresholds = {
-    'cold': 35,
-    'warm': 35,
-    'hot': 45,
+    'cold': 40,
+    'warm': 45,
+    'hot': 50,
 }
 
 cpu_thresholds = {
-    'cold': 35,
-    'warm': 40,
-    'hot': 50,
+    'cold': 45,
+    'warm': 55,
+    'hot': 55,
 }
 
 gpu_thresholds = {
@@ -43,8 +43,8 @@ def set_fans(fans, speed):
 def check_temps():
     global temperatures    # If anyone gets above hot, go to high state
     temperatures = {
-        'System': 30, #kernel lacking support for new ryzen chipset
-        'CPU': 30,
+        'System': float(psutil.sensors_temperatures()['it8622'][1].current), #kernel lacking support for new ryzen chipset
+        'CPU': float(psutil.sensors_temperatures()['it8622'][0].current),
         'GPU': float(psutil.sensors_temperatures()['amdgpu'][0].current),
     }
     print(temperatures)
