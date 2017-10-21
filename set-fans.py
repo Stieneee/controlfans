@@ -6,6 +6,7 @@ import psutil
 import sys
 
 gridfan = '/usr/local/bin/gridfan'
+#gridfan = '/usr/local/bin/gridfan -d /dev/GridPlus1' # Error testing
 check_interval = 5
 previous_state = ''
 state = 'low'
@@ -19,7 +20,7 @@ system_thresholds = {
 
 cpu_thresholds = {
     'cold': 45,
-    'warm': 55,
+    'warm': 48,
     'hot': 55,
 }
 
@@ -29,11 +30,20 @@ gpu_thresholds = {
     'hot': 60,
 }
 
+def gridfan_init():
+    ping = subprocess.run(gridfan + " ping", shell=True)
+
+    if (ping.returncode != 0):
+        return subprocess.run(gridfan + " init", shell=True, check=True)
+
+
 def set_fans(fans, speed):
     cmd = gridfan + " set fans " + ' '.join(map(str,fans)) + " speed " + str(speed)
     try:
-        subprocess.call(cmd, shell=True)
-        return True
+        fan = subprocess.run(cmd, shell=True)
+        if (fan.returncode == 0):
+            return True
+        return False
     except (OSError, ValueError, CalledProcessError, TimeoutExpired, SubprocessError) as err:
         print('Error while trying to set fans', err)
         return False
@@ -42,15 +52,18 @@ def set_fans(fans, speed):
 
 def check_temps():
     global temperatures    # If anyone gets above hot, go to high state
+
     temperatures = {
-        'System': float(psutil.sensors_temperatures()['it8622'][1].current), #kernel lacking support for new ryzen chipset
-        'CPU': float(psutil.sensors_temperatures()['it8622'][0].current),
+        #'System': float(psutil.sensors_temperatures()['it8622'][1].current), #kernel lacking support for new ryzen chipset
+        #'CPU': float(psutil.sensors_temperatures()['it8622'][0].current),
+        'System': 0, #kernel lacking support for new ryzen chipset
+        'CPU': 0,
         'GPU': float(psutil.sensors_temperatures()['amdgpu'][0].current),
     }
-    print(temperatures)
-    sys.stdout.flush() #systemd journal
 
-subprocess.call(gridfan + " init", shell=True)
+# Main Program
+
+gridfan_init()
 
 while True:
     check_temps()
@@ -74,8 +87,13 @@ while True:
 
     # Attempt set fan if required
     if (previous_state != state):
+        print(temperatures)
+        sys.stdout.flush() #systemd journal
         print(state)
         sys.stdout.flush() #systemd journal
+
+        gridfan_init()
+
         if (state == 'high'):
             r1 = set_fans([1,2,3,4,5,6], 80)
             r2 = True
@@ -88,12 +106,6 @@ while True:
 
         if (r1 & r2):
             previous_state = state
-        else:
-            try:
-                subprocess.call(gridfan + " init", shell=True)
-            except (OSError, ValueError, CalledProcessError, TimeoutExpired, SubprocessError) as err:
-                print('Error while trying to init fans', err)
-                sys.stdout.flush() #systemd journal
 
     # Snooze
     time.sleep(check_interval)
