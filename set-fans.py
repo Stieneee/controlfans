@@ -20,7 +20,7 @@ system_thresholds = {
 
 cpu_thresholds = {
     'cold': 45,
-    'warm': 48,
+    'warm': 50,
     'hot': 55,
 }
 
@@ -70,6 +70,7 @@ while True:
 
     r1 = False
     r2 = False
+    r3 = False
 
     # Determine state
     if (temperatures['System'] > system_thresholds['hot']
@@ -97,12 +98,15 @@ while True:
         if (state == 'high'):
             r1 = set_fans([1,2,3,4,5,6], 80)
             r2 = True
+            r3 = True
         elif (state == 'medium'):
             r1 = set_fans([2,3,5], 40)
-            r2 = set_fans([1,4,6], 60)
+            r2 = set_fans([4,6], 60)
+            r3 = set_fans([1], 80)
         elif (state == 'low'):
             r1 = set_fans([2,3,5], 0)
-            r2 = set_fans([1,4,6], 40)
+            r2 = set_fans([4,6], 40)
+            r3 = set_fans([1], 60)
 
         if (r1 & r2):
             previous_state = state
